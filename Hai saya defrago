@@ -1,0 +1,62 @@
+<?php
+header('Content-Type: application/json');
+
+// 1. Ganti ini sama data dari Meta Developer
+$TOKEN = 'EAAxxxTOKEN_WHATSAPP_KAMU';
+$PHONE_ID = '123456789'; // ID nomor WA kamu
+$VERIFY_TOKEN = 'defrago123'; // token bebas buat verifikasi
+
+// 2. Handle verifikasi GET dari Meta
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    $mode = $_GET['hub.mode']?? '';
+    $token = $_GET['hub.verify_token']?? '';
+    $challenge = $_GET['hub.challenge']?? '';
+
+    if ($mode === 'subscribe' && $token === $VERIFY_TOKEN) {
+        echo $challenge;
+        exit;
+    } else {
+        http_response_code(403);
+        echo 'Forbidden';
+        exit;
+    }
+}
+
+// 3. Handle chat masuk POST
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $input = file_get_contents('php://input');
+    $data = json_decode($input, true);
+
+    // Ambil nomor pengirim + isi pesan
+    $message = $data['entry'][0]['changes'][0]['value']['messages'][0]?? null;
+
+    if ($message && $message['type'] === 'text') {
+        $from = $message['from'];
+        $text = $message['text']['body'];
+
+        // Log ke file biar kelihatan chat masuk
+        file_put_contents('log.txt', date('Y-m-d H:i:s'). " - $from: $text\n", FILE_APPEND);
+
+        // Kirim balasan "ada yang bisa saya bantu"
+        $reply = [
+            'messaging_product' => 'whatsapp',
+            'to' => $from,
+            'text' => ['body' => 'Hai saya defrago]
+        ];
+
+        $ch = curl_init("https://graph.facebook.com/v20.0/$PHONE_ID/messages");
+        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($reply));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Authorization: Bearer '. $TOKEN,
+            'Content-Type: application/json'
+        ]);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_exec($ch);
+        curl_close($ch);
+    }
+
+    http_response_code(200); // wajib 200 biar Meta ga retry
+    echo json_encode(['status' => 'ok']);
+}
+?>
